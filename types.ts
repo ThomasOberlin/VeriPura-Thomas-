@@ -23,6 +23,17 @@ export enum ProductType {
     READY_TO_EAT = 'Ready-to-Eat Deli Salads'
 }
 
+export type CompanyType = 'Importer' | 'Exporter' | 'Transformer' | 'Raw Material Supplier';
+
+export interface UserAccount {
+    id: string;
+    name: string;
+    email: string;
+    role: 'Admin' | 'Manager' | 'User' | 'Viewer';
+    status: 'Active' | 'Invited' | 'Inactive';
+    lastActive: string;
+}
+
 export interface Address {
     street: string;
     city: string;

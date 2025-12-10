@@ -1,7 +1,128 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, Map, Phone, FileText, Edit2, Save, X, Plus, Trash2, MapPin } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { BookOpen, Map, Phone, FileText, Edit2, Save, X, Plus, Trash2, MapPin, MousePointerClick } from 'lucide-react';
 import { useAppContext } from '../App';
 import { TraceabilityPlan } from '../types';
+
+// Interactive Map Component
+const FarmMapEditor = ({ 
+    coordinates, 
+    isEditing, 
+    onChange 
+}: { 
+    coordinates: { lat: number; lng: number }[], 
+    isEditing: boolean, 
+    onChange: (coords: { lat: number; lng: number }[]) => void 
+}) => {
+    const mapRef = useRef<HTMLDivElement>(null);
+
+    // Mock bounding box for demo visualization (Baja California region)
+    const BOUNDS = {
+        minLat: 32.4, maxLat: 32.6,
+        minLng: -117.0, maxLng: -116.8
+    };
+
+    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isEditing || !mapRef.current) return;
+        
+        const rect = mapRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Calculate lat/lng based on click position relative to container
+        const lat = BOUNDS.maxLat - (y / rect.height) * (BOUNDS.maxLat - BOUNDS.minLat);
+        const lng = BOUNDS.minLng + (x / rect.width) * (BOUNDS.maxLng - BOUNDS.minLng);
+        
+        onChange([...coordinates, { lat, lng }]);
+    };
+
+    const handleClear = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onChange([]);
+    };
+
+    const handleUndo = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onChange(coordinates.slice(0, -1));
+    };
+
+    return (
+        <div 
+            ref={mapRef}
+            onClick={handleClick}
+            className={`relative w-full h-56 bg-slate-100 rounded-lg overflow-hidden border border-slate-300 transition-all ${isEditing ? 'cursor-crosshair ring-4 ring-emerald-500/10 hover:ring-emerald-500/20' : ''}`}
+        >
+            {/* Background Map Image (Satellite Style Placeholder) */}
+            <div className="absolute inset-0 bg-[url('https://mt0.google.com/vt/lyrs=s&x=20&y=49&z=7')] bg-cover bg-center opacity-80 grayscale-[20%]"></div>
+            
+            {/* Grid Overlay */}
+            <div className="absolute inset-0 pointer-events-none opacity-20" style={{ backgroundImage: 'linear-gradient(#ffffff 1px, transparent 1px), linear-gradient(90deg, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+
+            {/* Polygon Lines */}
+            {coordinates.length > 1 && (
+                <svg className="absolute inset-0 pointer-events-none w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                    <polygon 
+                        points={coordinates.map(c => {
+                             const y = ((BOUNDS.maxLat - c.lat) / (BOUNDS.maxLat - BOUNDS.minLat)) * 100;
+                             const x = ((c.lng - BOUNDS.minLng) / (BOUNDS.maxLng - BOUNDS.minLng)) * 100;
+                             return `${Math.min(Math.max(x, 0), 100)},${Math.min(Math.max(y, 0), 100)}` 
+                        }).join(' ')}
+                        fill="rgba(16, 185, 129, 0.3)"
+                        stroke="#10b981"
+                        strokeWidth="1"
+                    />
+                </svg>
+            )}
+
+            {/* Coordinate Points */}
+            {coordinates.map((coord, i) => {
+                const top = ((BOUNDS.maxLat - coord.lat) / (BOUNDS.maxLat - BOUNDS.minLat)) * 100;
+                const left = ((coord.lng - BOUNDS.minLng) / (BOUNDS.maxLng - BOUNDS.minLng)) * 100;
+                
+                return (
+                    <div 
+                        key={i}
+                        className="absolute w-3 h-3 bg-red-500 border-2 border-white rounded-full shadow-sm transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center group z-10 transition-transform hover:scale-150"
+                        style={{ top: `${Math.min(Math.max(top, 0), 100)}%`, left: `${Math.min(Math.max(left, 0), 100)}%` }}
+                    >
+                        <div className="hidden group-hover:block absolute bottom-full mb-2 bg-slate-900/90 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-20 shadow-lg backdrop-blur-sm">
+                            {coord.lat.toFixed(5)}, {coord.lng.toFixed(5)}
+                        </div>
+                    </div>
+                );
+            })}
+
+            {isEditing && (
+                <div className="absolute bottom-3 right-3 flex gap-2 z-20">
+                     {coordinates.length > 0 && (
+                        <>
+                            <button 
+                                onClick={handleUndo}
+                                className="bg-white text-slate-700 text-xs px-3 py-1.5 rounded shadow-sm hover:bg-slate-50 border border-slate-200 font-medium"
+                            >
+                                Undo
+                            </button>
+                            <button 
+                                onClick={handleClear}
+                                className="bg-white text-red-600 text-xs px-3 py-1.5 rounded shadow-sm hover:bg-red-50 border border-slate-200 font-medium"
+                            >
+                                Clear All
+                            </button>
+                        </>
+                     )}
+                     <div className="bg-slate-900/80 backdrop-blur text-white text-xs px-3 py-1.5 rounded shadow-sm flex items-center gap-2">
+                        <MousePointerClick size={12} /> Click map to add point
+                    </div>
+                </div>
+            )}
+            
+            {!isEditing && coordinates.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/5">
+                    <span className="bg-white/90 px-3 py-1 rounded text-xs text-slate-500 shadow-sm">No coordinates mapped</span>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export default function TraceabilityPlanView() {
     const { traceabilityPlan, updateTraceabilityPlan } = useAppContext();
@@ -61,7 +182,7 @@ export default function TraceabilityPlanView() {
         }) : null);
     };
 
-    const updateMap = (id: string, field: string, value: string) => {
+    const updateMap = (id: string, field: string, value: any) => {
         setFormData(prev => prev ? ({
             ...prev,
             farmMaps: prev.farmMaps.map(m => m.id === id ? { ...m, [field]: value } : m)
@@ -192,13 +313,13 @@ export default function TraceabilityPlanView() {
                             {isEditing && (
                                 <button 
                                     onClick={() => removeMap(map.id)}
-                                    className="absolute top-2 right-2 text-slate-400 hover:text-red-500 p-1 bg-white rounded-full border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute top-2 right-2 text-slate-400 hover:text-red-500 p-1 bg-white rounded-full border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity z-10"
                                 >
                                     <Trash2 size={14} />
                                 </button>
                             )}
                             
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Field Name / ID</label>
                                     {isEditing ? (
@@ -228,24 +349,19 @@ export default function TraceabilityPlanView() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Coordinates / Bounds</label>
-                                    <div className="bg-slate-200 h-24 rounded flex items-center justify-center text-slate-500 text-xs border border-slate-300 relative overflow-hidden">
-                                        <MapPin className="absolute opacity-10 w-16 h-16" />
-                                        {isEditing ? (
-                                            <span className="z-10 bg-white/80 px-2 py-1 rounded">Interactive Map Editor Placeholder</span>
-                                        ) : (
-                                            <span className="z-10 font-mono bg-white/80 px-2 py-1 rounded">
-                                                {map.coordinates.length > 0 
-                                                    ? `${map.coordinates[0].lat}, ${map.coordinates[0].lng}` 
-                                                    : 'No coordinates set'}
-                                            </span>
-                                        )}
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Coordinates / Polygon</label>
+                                    <FarmMapEditor 
+                                        coordinates={map.coordinates}
+                                        isEditing={isEditing}
+                                        onChange={(newCoords) => updateMap(map.id, 'coordinates', newCoords)}
+                                    />
+                                    <div className="mt-2 text-[10px] text-slate-400 font-mono">
+                                        {map.coordinates.length > 0 ? (
+                                            <>
+                                                Center: {map.coordinates[0].lat.toFixed(4)}, {map.coordinates[0].lng.toFixed(4)} <span className="mx-1">•</span> Points: {map.coordinates.length}
+                                            </>
+                                        ) : 'No points set'}
                                     </div>
-                                    {isEditing && (
-                                        <p className="text-[10px] text-slate-400 mt-1 italic">
-                                            (In a real app, users would draw polygon boundaries on an interactive map here.)
-                                        </p>
-                                    )}
                                 </div>
                             </div>
                         </div>

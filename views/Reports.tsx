@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { FileText, Download, Clock, ShieldAlert, Check, Search, Mail, Eye, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { useAppContext } from '../App';
+import { Product, TraceabilityEvent } from '../types';
 
 export default function Reports() {
     const { products } = useAppContext();
@@ -10,10 +11,75 @@ export default function Reports() {
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [lastReport, setLastReport] = useState<string | null>(null);
 
+    // Helper to escape CSV fields
+    const safeCSV = (str: string | number | undefined) => {
+        if (str === undefined || str === null) return '';
+        const stringValue = String(str);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
+
     const generateSpreadsheet = () => {
         setIsGenerating(true);
+        
+        // FSMA 204 Required Columns (simplified for demo)
+        const headers = [
+            "Traceability Lot Code",
+            "Product Description",
+            "Event Type (CTE)",
+            "Date",
+            "Time",
+            "Location Description",
+            "Location Contact",
+            "Reference Document Type",
+            "Reference Document Number",
+            "Quantity",
+            "Unit of Measure",
+            "Related / Source TLC",
+            "Data Completeness Status"
+        ];
+
+        const rows: string[] = [];
+
+        // Flatten the data: Iterate Products -> Iterate Events
+        products.forEach((product: Product) => {
+            product.events.forEach((event: TraceabilityEvent) => {
+                const row = [
+                    safeCSV(event.kdeData?.tlcAssigned || product.tlc), // TLC
+                    safeCSV(product.name), // Product
+                    safeCSV(event.type), // CTE
+                    safeCSV(event.date), // Date
+                    safeCSV("12:00:00"), // Time (Mocked as standard generic time)
+                    safeCSV(event.location), // Location Desc
+                    safeCSV(event.performer), // Contact/Performer
+                    safeCSV(event.kdeData?.referenceDocType || "Internal Log"), // Ref Doc Type
+                    safeCSV(event.kdeData?.referenceDocNum || event.documents[0]?.id || "N/A"), // Ref Doc Num
+                    safeCSV(product.quantity), // Qty (Snapshot of product qty)
+                    safeCSV(product.uom), // UOM
+                    safeCSV(event.kdeData?.tlcSource || "N/A"), // Source
+                    safeCSV(event.status) // Status
+                ];
+                rows.push(row.join(','));
+            });
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const fileName = `FDA_Traceability_Report_${new Date().toISOString().split('T')[0]}.csv`;
+
+        // Simulate processing time for UX, then trigger download
         setTimeout(() => {
-            setLastReport(`FDA_Traceability_Report_${new Date().toISOString().split('T')[0]}.csv`);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            setLastReport(fileName);
             setIsGenerating(false);
             setShowPreview(false);
         }, 1500);
@@ -60,7 +126,7 @@ export default function Reports() {
             {showPreview && (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-top-4">
                     <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
-                        <h3 className="font-bold text-slate-700">Preview: 3 Shipments Found</h3>
+                        <h3 className="font-bold text-slate-700">Preview: {products.length} Traceability Chains Found</h3>
                         <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
                     </div>
                     <table className="w-full text-sm">
@@ -68,23 +134,19 @@ export default function Reports() {
                             <tr>
                                 <th className="px-4 py-2">TLC</th>
                                 <th className="px-4 py-2">Product</th>
-                                <th className="px-4 py-2">Date</th>
+                                <th className="px-4 py-2">Ref Document</th>
                                 <th className="px-4 py-2">Completeness</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr id="preview-table-row-0" className="border-b border-slate-100">
-                                <td className="px-4 py-3 font-mono text-xs">TH-MG-2023-8892</td>
-                                <td className="px-4 py-3">Nam Dok Mai Mangoes</td>
-                                <td className="px-4 py-3">Oct 25, 2023</td>
-                                <td className="px-4 py-3 text-emerald-600 font-bold">100%</td>
-                            </tr>
-                            <tr className="border-b border-slate-100 bg-slate-50/50">
-                                <td className="px-4 py-3 font-mono text-xs">TH-MG-2023-8893</td>
-                                <td className="px-4 py-3">Nam Dok Mai Mangoes</td>
-                                <td className="px-4 py-3">Oct 26, 2023</td>
-                                <td className="px-4 py-3 text-emerald-600 font-bold">100%</td>
-                            </tr>
+                            {products.slice(0, 3).map((p, i) => (
+                                <tr key={p.id} className="border-b border-slate-100">
+                                    <td className="px-4 py-3 font-mono text-xs">{p.tlc}</td>
+                                    <td className="px-4 py-3">{p.name}</td>
+                                    <td className="px-4 py-3 text-slate-500">{p.events[0]?.kdeData?.referenceDocNum || "N/A"}</td>
+                                    <td className="px-4 py-3 text-emerald-600 font-bold">{p.completeness}%</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
